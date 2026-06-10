@@ -10,9 +10,9 @@ Custom GPT が Private GitHub Repository を直接参照するのではなく、
 
 ```mermaid
 flowchart LR
-    User[User] --> Custom GPT[Custom GPT<br/>Custom GPT]
+    User[User] --> CGPT[Custom GPT]
 
-    Custom GPT -->|Actions<br/>Bearer Auth| APIGW[API Gateway<br/>HTTP API]
+    CGPT -->|Actions<br/>Bearer Auth| APIGW[API Gateway<br/>HTTP API]
 
     APIGW --> Lambda[Lambda<br/>Interview Knowledge Bridge]
 
@@ -34,8 +34,8 @@ flowchart LR
     PublicSummaries --> Lambda
 
     Lambda -->|Whitelisted document only| APIGW
-    APIGW --> Custom GPT
-    Custom GPT --> User
+    APIGW --> CGPT
+    CGPT --> User
 ```
 
 ## Request Flow
