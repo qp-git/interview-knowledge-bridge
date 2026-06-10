@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: Interview Knowledge Bridge API
+  version: 0.1.0
+  description: API for retrieving whitelisted interview preparation documents.
+
+servers:
+  - url: https://7cs1elwoy0.execute-api.ap-northeast-1.amazonaws.com
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check API health
+      description: Returns API health status.
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /documents:
+    get:
+      operationId: listDocuments
+      summary: List available documents
+      description: Returns a list of document IDs that are allowed to be retrieved.
+      responses:
+        "200":
+          description: List of available documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          example: incident-response
+                        title:
+                          type: string
+                          example: 障害対応演習
+
+  /documents/{document_id}:
+    get:
+      operationId: getDocumentById
+      summary: Get a whitelisted document
+      description: Returns a document only when the document_id is allowed by the API.
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          description: The whitelisted document ID.
+          schema:
+            type: string
+            enum:
+              - incident-response
+      responses:
+        "200":
+          description: Document detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  summary:
+                    type: string
+                  skills:
+                    type: array
+                    items:
+                      type: string
+                  interview_points:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          description: Document not found or not allowed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
