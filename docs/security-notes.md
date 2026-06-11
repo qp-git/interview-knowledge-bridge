@@ -187,3 +187,22 @@ It should also control the retrieval target through authorization.
 In this project, document_id and allowed-documents.json are used to keep the retrieval target explicit and limited.
 
 This pattern can be reused for other AI agents or internal knowledge retrieval tools.
+
+
+## Custom GPT Actions 運用メモ
+
+Custom GPT Actions では、OpenAPI schema を編集・再インポートしたあとに、APIキーの設定を入れ直す必要がある場合がある。
+
+schema自体が正しく、curlではAPIが正常に動作していても、Actions側でBearerトークンが保存されていない、またはリクエストに付与されていない場合、403エラーになる。
+
+schema更新後にActionsをテストする場合は、以下を確認する。
+
+- OpenAPI schema が正常に保存されていること
+- Authentication type が API Key になっていること
+- Auth type が Bearer になっていること
+- API Key 欄に実際のキー値を入れ直していること
+- Action更新後にGPT本体も保存していること
+
+Actionsから403が返る場合は、まずAPIキーが正しく送信されていない可能性を疑う。
+
+一方、特定のdocument_idで404が返る場合は、APIキーではなく、allowed-documents.jsonやOpenAPI schemaのenumに対象IDが登録されていない可能性を疑う。
