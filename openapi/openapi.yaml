@@ -119,6 +119,9 @@ components:
           enum:
             - private
             - public
+            - public-odaibox
+            - public-stt-ecs
+            - public-alexa-skill
           example: public
 
     DocumentDetailResponse:
