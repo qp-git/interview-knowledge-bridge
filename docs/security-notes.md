@@ -2,138 +2,188 @@
 
 ## Overview
 
-Interview Knowledge Bridge では、Custom GPT から GitHub リポジトリを直接参照させず、API Gateway と Lambda を中継させています。
+Interview Knowledge Bridge allows Custom GPT to retrieve approved Markdown documents from GitHub.
 
-Lambda は GitHub fine-grained PAT を利用して Private Repository を参照しますが、API利用者へ返す情報は allowed-documents.json によって制御しています。
+Because Lambda can access GitHub through the GitHub API, this API must be designed carefully.
 
-## Authentication and Authorization
+The most important security idea is that Lambda should not behave as a simple proxy.
 
-この構成では、認証と認可を分けて考えています。
+It should act as a gatekeeper that controls which documents can be returned.
 
-### Authentication
+## Main risk
 
-API利用者が正しい相手かを確認するため、Bearer認証を利用しています。
+Lambda may have a GitHub token that can read files from an allowed repository.
 
-Custom GPT は API呼び出し時に、Authorization ヘッダーへ Bearer 形式で BRIDGE_API_KEY を送信します。
+If the API accepts arbitrary file paths from the client, a caller could attempt to retrieve files that were not intended to be exposed.
 
-例:
+For example, this kind of design should be avoided:
+
+    GET /documents?path=some/arbitrary/file.md
+
+Instead, the API should accept only a document_id:
+
+    GET /documents/public-interview-knowledge-bridge
+
+The document_id is resolved to an approved path only after checking allowed-documents.json.
+
+## Authentication
+
+The API uses Bearer authentication.
+
+Custom GPT sends the API key in the Authorization header.
 
     Authorization: Bearer <BRIDGE_API_KEY>
 
-Lambda はリクエストヘッダーの値を確認し、環境変数に保存された BRIDGE_API_KEY と一致する場合のみ処理を続行します。
+Lambda checks this value against the BRIDGE_API_KEY environment variable.
 
-### Authorization
+If the token is missing or invalid, Lambda returns 401.
 
-Bearer認証に成功しても、API利用者が Private Repository 内の任意ファイルを読めるわけではありません。
+Authentication answers this question:
 
-取得できる文書は、allowed-documents.json に定義された document_id のみです。
+    Is this caller allowed to use the API?
 
-例:
+## Authorization
 
-    GET /documents/incident-response
+Authentication alone is not enough.
 
-API利用者はファイルパスを直接指定できず、document_id のみ指定します。
+Even after authentication succeeds, the API must decide which document the caller is allowed to retrieve.
 
-Lambda は document_id をもとに allowed-documents.json を参照し、許可されたパスのみ取得します。
+This project uses allowed-documents.json for authorization.
 
-## allowed-documents.json
+The API only returns documents that are explicitly listed in allowed-documents.json.
 
-allowed-documents.json は、API利用者に返してよい文書のホワイトリストです。
+Authorization answers this question:
 
-例:
+    Which document is this caller allowed to retrieve?
 
-    {
-      "documents": [
-        {
-          "id": "incident-response",
-          "title": "障害対応演習",
-          "path": "gpt-context/summaries/incident-response.md"
-        }
-      ]
-    }
+## Document allowlist
 
-Lambda はこの一覧に存在する document_id だけを受け付けます。
+allowed-documents.json defines the documents that can be retrieved.
 
-## GitHub PAT Scope
+Each entry has:
 
-Private Repository の参照には GitHub fine-grained PAT を使用しています。
+    id
+    title
+    path
 
-PATには必要最小限の権限のみ付与します。
+The client sends only the id.
 
-- Repository access: engineer-private-notes のみ
+Lambda uses the id to look up the approved path.
+
+This prevents the client from directly choosing arbitrary paths in the repository.
+
+## Path handling
+
+The API should not accept raw file paths from the client.
+
+The allowed path should be defined only on the server side.
+
+Recommended restrictions:
+
+- Only allow files listed in allowed-documents.json
+- Only allow Markdown files
+- Keep allowed files under gpt-context/summaries/
+- Reject paths that contain ..
+- Do not expose repository root browsing
+- Do not return files that are not explicitly listed
+
+## GitHub token scope
+
+The GitHub token should have the minimum permissions required.
+
+Recommended:
+
 - Contents: Read-only
 - Metadata: Read-only
+- Repository access limited to the required repository
 
-このPATは Lambda の環境変数として保持し、GitHub上には保存しません。
+Avoid giving the token write permissions.
 
-## Public and Private Repositories
+Avoid using a token that can access unrelated repositories.
 
-このAPIは、Private Repository と Public Repository の両方を参照します。
+## Public and private sources
 
-### Private Repository
+This API can return documents from both public and private repositories.
 
-Private Repository には、面接準備や学習メモなど、外部公開しない情報を配置します。
+The response includes the source field.
 
-構成例:
+    source: public
+    source: private
 
-    engineer-private-notes/
-    └── gpt-context/
-        ├── allowed-documents.json
-        └── summaries/
+This helps the AI agent distinguish between externally visible information and private context.
 
-### Public Repository
+Public documents are suitable for portfolio descriptions.
 
-Public Repository には、公開可能なポートフォリオ情報を配置します。
+Private documents are suitable for detailed learning notes, troubleshooting records, and interview preparation context.
 
-構成例:
+The application should avoid mixing these purposes.
 
-    engineer-portfolio/
-    └── gpt-context/
-        ├── allowed-documents.json
-        └── summaries/
+## Secrets management
 
-APIレスポンスでは、各文書に source を付け、Private/Public の区別ができるようにしています。
+Current simple approach:
 
-例:
+- Store BRIDGE_API_KEY in Lambda environment variables
+- Store GitHub token in Lambda environment variables
 
-    {
-      "id": "public-portfolio-index",
-      "title": "公開ポートフォリオ概要",
-      "source": "public"
-    }
+Possible improvements:
 
-## Important Risk
+- Use AWS Secrets Manager
+- Use API Gateway Authorizer
+- Use GitHub App instead of a long-lived PAT
+- Rotate secrets periodically
+- Separate public and private access policies
 
-Lambda は GitHub PAT を持っているため、権限上は Private Repository 内のファイルを読むことができます。
+## Logging
 
-そのため、Lambdaコードに不備があると、PATの権限内で本来返すべきでないファイルを返してしまうリスクがあります。
+Logs should help with troubleshooting without exposing secrets.
 
-このリスクを抑えるため、以下の制御を行っています。
+Recommended:
 
-- API利用者から任意のファイルパスを受け取らない
-- document_id のみ受け取る
-- document_id からパスへの変換は allowed-documents.json でのみ行う
-- 取得可能なパスを gpt-context/summaries/ 配下に制限する
-- 取得対象を .md ファイルのみに制限する
-- .. を含むパスを拒否する
+- Log request path
+- Log document_id
+- Log source type
+- Log authorization failures without printing tokens
+- Log GitHub API failures without printing credentials
 
-## Current Limitations
+Avoid logging:
 
-現在の構成はMVPです。
+- BRIDGE_API_KEY
+- GitHub token
+- Full Authorization header
+- Private document content
 
-今後の改善点は以下です。
+## OpenAPI schema caution
 
-- GitHub PAT を AWS Secrets Manager に移行する
-- GitHub App 方式に変更する
-- API Gateway Authorizer の利用を検討する
-- CloudWatch Logs を整理する
-- エラー時に内部情報を返しすぎないようにする
-- CI/CDでLambdaコードとOpenAPI schemaの反映を自動化する
+The OpenAPI schema is used by Custom GPT Actions.
 
-## Summary
+It should be simple and stable.
 
-この構成では、Custom GPT に Private Repository の権限を直接渡さず、API Gateway + Lambda を中継させています。
+To avoid encoding and copy-paste issues, examples in openapi.yaml should use ASCII text when possible.
 
-Lambdaは強い権限を持つため、外部へ返す情報をコード上で明確に制御する必要があります。
+Recommended:
 
-認証によってAPI利用者を確認し、認可によって取得可能な文書を制限することで、Privateな情報を扱うAI連携における安全性を高めています。
+    example: Portfolio index
+
+Avoid:
+
+    example: 公開ポートフォリオ概要
+
+Japanese Markdown content can still be returned by the API response.
+
+The OpenAPI schema itself does not need Japanese examples.
+
+## Lessons learned
+
+The main lesson is that an AI-facing retrieval API needs both convenience and control.
+
+It is useful to let an AI agent retrieve Markdown documents from GitHub.
+
+However, once Lambda has permission to access GitHub, Lambda is responsible for deciding what information can be returned.
+
+A secure design should not rely only on authentication.
+
+It should also control the retrieval target through authorization.
+
+In this project, document_id and allowed-documents.json are used to keep the retrieval target explicit and limited.
+
+This pattern can be reused for other AI agents or internal knowledge retrieval tools.
