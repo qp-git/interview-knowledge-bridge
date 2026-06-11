@@ -60,6 +60,7 @@ paths:
               - incident-response
               - dev-marathon
               - physical-network
+              - private-interview-knowledge-bridge
               - public-portfolio-index
               - public-interview-knowledge-bridge
       responses:
