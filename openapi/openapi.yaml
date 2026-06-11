@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Interview Knowledge Bridge API
-  version: 0.2.1
+  version: 0.2.2
   description: API for retrieving whitelisted learning portfolio and project documents.
 
 servers:
@@ -63,6 +63,9 @@ paths:
               - private-interview-knowledge-bridge
               - public-portfolio-index
               - public-interview-knowledge-bridge
+              - public-odaibox
+              - public-stt-ecs
+              - public-alexa-skill
       responses:
         "200":
           description: Document detail
@@ -119,9 +122,6 @@ components:
           enum:
             - private
             - public
-            - public-odaibox
-            - public-stt-ecs
-            - public-alexa-skill
           example: public
 
     DocumentDetailResponse:
