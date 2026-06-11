@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Interview Knowledge Bridge API
-  version: 0.2.0
-  description: API for retrieving whitelisted interview preparation and portfolio documents.
+  version: 0.2.1
+  description: API for retrieving whitelisted learning portfolio and project documents.
 
 servers:
   - url: https://7cs1elwoy0.execute-api.ap-northeast-1.amazonaws.com
@@ -113,7 +113,7 @@ components:
           example: public-portfolio-index
         title:
           type: string
-          example: 公開ポートフォリオ概要
+          example: Portfolio index
         source:
           type: string
           enum:
@@ -129,7 +129,7 @@ components:
           example: public-portfolio-index
         title:
           type: string
-          example: 公開ポートフォリオ概要
+          example: Portfolio index
         source:
           type: string
           enum:
@@ -151,3 +151,4 @@ components:
           example: unauthorized
         message:
           type: string
+          example: Unauthorized
