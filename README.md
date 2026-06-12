@@ -1,139 +1,82 @@
 # Interview Knowledge Bridge
 
-Interview Knowledge Bridge is an API that allows Custom GPT to retrieve approved Markdown documents from GitHub.
+## 概要
 
-It was built to help organize and reuse learning portfolio records, project notes, and Markdown-based documentation with AI assistance.
+Interview Knowledge Bridge は、Custom GPT から Private GitHub リポジトリ上の許可済み Markdown を参照できるようにするための中継 API です。
 
-The API is designed not only as a relay between Custom GPT and GitHub, but also as a controlled gateway that limits which documents can be returned.
+Custom GPT にプロジェクトの詳細情報を補助的に参照させるため、API Gateway、Lambda、GitHub API を組み合わせて、許可済み Markdown だけを返す構成にしています。
 
-## Purpose
+## 作成背景
 
-When learning projects and portfolio notes are stored as Markdown in GitHub, it is useful for an AI agent to retrieve those documents and use them as context.
+公開用のポートフォリオには、初見でも読みやすい概要、構成、設計判断、学びを整理しています。
 
-However, allowing an AI agent to freely access repository files is not desirable.
+一方で、Private リポジトリには、より細かいコード解説、制作背景、判断理由、作業中の補足メモなどを残しています。これらは AI にプロジェクト全体の把握や説明文の整理を補助させるうえで役立ちます。
 
-This project solves that by placing API Gateway and Lambda between Custom GPT and GitHub.
+ただし、Private リポジトリ内のすべての情報を AI に読ませると、古いメモ、未整理の作業ログ、AI が読み取りづらい資料などが混ざり、回答の質を下げる可能性があります。
 
-Custom GPT can request documents through the API, but Lambda only returns documents that are explicitly allowed.
+そのため、Custom GPT と Private GitHub リポジトリの間に Bridge API を置き、ホワイトリストで許可した Markdown だけを返す構成にしました。
 
-## Architecture
+## 全体構成
+
+基本的な流れは以下です。
 
     Custom GPT
-      ↓ Bearer Auth
+      ↓
+    Actions / OpenAPI schema
+      ↓
     API Gateway
       ↓
     Lambda
+      ↓ document_id / project_id を検証
+    Whitelist
+      ↓ 許可済みパスに変換
+    GitHub API
       ↓
-    GitHub Repository
+    Private GitHub Markdown
 
-Custom GPT sends an HTTP request to API Gateway.
+## 主な設計方針
 
-API Gateway invokes Lambda.
+### 任意のGitHubパスを受け取らない
 
-Lambda checks authentication, validates the requested document_id, retrieves the approved Markdown file from GitHub, and returns it to Custom GPT.
+Bridge API では、Custom GPT から任意の GitHub URL やファイルパスを直接受け取らない方針にしています。
 
-## Features
+任意パスを受け取る設計にすると、ホワイトリストを用意していても、許可していないファイルを指定できる余地が残ります。
 
-- List available documents
-- Retrieve approved Markdown documents by document_id
-- Support both public and private GitHub repositories
-- Bearer authentication with BRIDGE_API_KEY
-- Document allowlist using allowed-documents.json
-- Prevent arbitrary file path access
-- OpenAPI schema for Custom GPT Actions
+そのため、Custom GPT からは `document_id` または `project_id` を受け取り、API 側で許可済みの GitHub パスに変換します。
 
-## API Endpoints
+### document_idで文書単位に制御する
 
-    GET /health
-      Health check endpoint.
-      Authentication is not required.
+`document_id` は、取得可能な Markdown を1件ずつ識別するための ID です。
 
-    GET /documents
-      Returns the list of approved documents.
-      Bearer authentication is required.
+API 側では、`document_id` と GitHub 上の Markdown パスの対応を管理します。ホワイトリストにない `document_id` は返しません。
 
-    GET /documents/{document_id}
-      Returns the Markdown content for an approved document.
-      Bearer authentication is required.
+### project_idでプロジェクト単位に制御する
 
-## Document allowlist
+`project_id` は、プロジェクト単位で関連する Markdown を取得するための ID です。
 
-The API does not accept raw GitHub file paths from the client.
+たとえば、OdaiBox、STT + ECS、Interview Knowledge Bridge など、プロジェクト単位で許可済み文書をまとめて返すことを想定しています。
 
-Instead, the client sends a document_id.
+## 使用技術
 
-Lambda checks allowed-documents.json and resolves the document_id to an approved Markdown path.
+- Custom GPT Actions
+- OpenAPI schema
+- Amazon API Gateway
+- AWS Lambda
+- GitHub API
+- Markdown
+- ホワイトリストによる参照制御
 
-Example:
+## 環境変数
 
-    document_id:
-      public-interview-knowledge-bridge
+実際の値はリポジトリには含めません。
 
-    resolved path:
-      gpt-context/summaries/interview-knowledge-bridge.md
+- `GITHUB_OWNER`
+- `GITHUB_REPO`
+- `GITHUB_BRANCH`
+- `GITHUB_TOKEN`
 
-This design keeps the retrieval target explicit and prevents clients from selecting arbitrary files.
+## 関連ドキュメント
 
-## Authentication
-
-The API uses Bearer authentication.
-
-Custom GPT sends the API key in the Authorization header.
-
-    Authorization: Bearer <BRIDGE_API_KEY>
-
-Lambda compares this token with the BRIDGE_API_KEY environment variable.
-
-## Repository structure
-
-    lambda/
-      Lambda function source code
-
-    openapi/
-      OpenAPI schema for Custom GPT Actions
-
-    docs/
-      Architecture, design, and security notes
-
-## Documents
-
-- [Architecture](docs/architecture.md)
-- [Design Notes](docs/design-notes.md)
-- [Security Notes](docs/security-notes.md)
-
-## Key design idea
-
-The most important design point is that Lambda is not treated as a simple proxy.
-
-Because Lambda can call the GitHub API, it is responsible for deciding what information can be returned.
-
-This project uses document_id and allowed-documents.json to separate authentication from authorization.
-
-Authentication answers:
-
-    Who can call this API?
-
-Authorization answers:
-
-    Which document can be returned?
-
-This makes the API safer and easier to extend to other AI agents or internal knowledge retrieval tools.
-
-## Notes for OpenAPI schema
-
-The OpenAPI schema is used by Custom GPT Actions.
-
-To avoid encoding and copy-paste issues, examples in openapi.yaml should use ASCII text when possible.
-
-Japanese Markdown content can still be returned by the API response.
-
-The schema itself does not need Japanese examples.
-
-## Future improvements
-
-- Use AWS Secrets Manager for API keys and GitHub tokens
-- Use API Gateway Authorizer
-- Replace GitHub PAT with GitHub App
-- Improve CloudWatch logging
-- Add automated schema validation
-- Keep OpenAPI enum and allowed-documents.json in sync
+- [ホワイトリスト設計メモ](./docs/whitelist-design.md)
+- [OpenAPI schema メモ](./docs/openapi-schema.md)
+- [デプロイメモ](./docs/deploy.md)
